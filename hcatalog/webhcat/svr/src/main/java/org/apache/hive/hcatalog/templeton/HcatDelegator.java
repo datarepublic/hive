@@ -20,6 +20,13 @@ package org.apache.hive.hcatalog.templeton;
 
 import java.io.IOException;
 import java.net.URI;
+import java.security.PrivilegedExceptionAction;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,6 +37,7 @@ import org.apache.commons.exec.ExecuteException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -46,9 +54,32 @@ public class HcatDelegator extends LauncherDelegator {
   private static final Log LOG = LogFactory.getLog(HcatDelegator.class);
   private ExecService execService;
 
+  private boolean jdbcMode;
+  private static boolean hiveUgiInitilized = false;
+  private static UserGroupInformation hiveUgi;
+
   public HcatDelegator(AppConfig appConf, ExecService execService) {
     super(appConf);
     this.execService = execService;
+    jdbcMode = appConf.jdbcMode();
+    if(jdbcMode && !hiveUgiInitilized) {
+        hiveUgi = getHiveUserGroupInformation(appConf);
+        hiveUgiInitilized = true;
+    }
+  }
+
+  private UserGroupInformation getHiveUserGroupInformation(AppConfig appConf) {
+    if(appConf.hiveKerberosPrincipal() == null || appConf.hiveKerberosKeytab() == null) {
+      LOG.info("Hive server2 Kerberos Principal or Keytab not defined. not loading UserGroupInformation.");
+      return null;
+    }
+    LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab()));
+    try {
+      return UserGroupInformation.loginUserFromKeytabAndReturnUGI(appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab());
+    } catch (IOException e) {
+      LOG.warn("Unable to create hive UGI.", e);
+      return null;
+    }
   }
 
   /**
@@ -57,6 +88,16 @@ public class HcatDelegator extends LauncherDelegator {
   public ExecBean run(String user, String exec, boolean format,
             String group, String permissions)
     throws NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    if(jdbcMode) {
+      try {
+        return new ExecBean(jdbc(user, exec), "", 0);
+      } catch (Exception e) {
+        LOG.error(String.format("unable to run JDBC %s", exec), e);
+        throw new ExecuteException("Failure calling Hive JDBC: " + exec, 1);
+      }
+    }
+
     SecureProxySupport proxy = new SecureProxySupport();
     try {
       List<String> args = makeArgs(exec, format, group, permissions);
@@ -870,4 +911,79 @@ public class HcatDelegator extends LauncherDelegator {
     ExecuteException, IOException {
     return jsonRun(user, exec, group, permissions, false);
   }
+
+  private String jdbc(String user, String execForCLI) throws IOException, InterruptedException, SQLException {
+    List<String> queries = new ArrayList<>();
+    for(String s : StringUtils.split(execForCLI, ';')) {
+      if (StringUtils.isBlank(s)) continue;
+      queries.add(s);
+    }
+
+    LOG.info(String.format("executing for user: %s exec: %s", user, execForCLI));
+    Connection connection = null;
+
+    try {
+      connection = getConnection(user);
+      Statement stmt = connection.createStatement();
+
+      for(int i = 0; i < queries.size() - 1; i++) {
+        String exec = queries.get(i);
+        LOG.info(String.format("executing: {}", exec));
+        stmt.execute(exec);
+      }
+
+      String exec = queries.get(queries.size() - 1);
+      LOG.info(String.format("executeQuery: {}", exec));
+      boolean hasResultSet = stmt.execute(exec);
+
+      if(!hasResultSet)
+        return "";
+
+      StringBuilder sb = new StringBuilder();
+
+      ResultSet res = stmt.getResultSet();
+
+      ResultSetMetaData rsmd = res.getMetaData();
+      int cols = rsmd.getColumnCount();
+      LOG.debug(String.format("The query fetched {} columns\n", cols));
+      LOG.debug("These columns are: ");
+      for (int i = 1; i <= cols; i++) {
+        String colName = rsmd.getColumnName(i);
+        String colType = rsmd.getColumnTypeName(i);
+        LOG.info(colName + " of type " + colType);
+      }
+
+      while (res.next()) {
+        String s = res.getString(1);
+        System.out.println(s);
+        LOG.info(s);
+        sb.append(s);
+      }
+      return sb.toString();
+
+    } finally {
+      try {
+        if(connection != null && !connection.isClosed())
+          connection.close();
+      } catch (SQLException ignored) {
+      }
+    }
+  }
+
+  private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
+    final String url = appConf.hiveJdbcUrl() + ";hive.server2.proxy.user=" + user + "?hive.ddl.output.format=json;";
+    LOG.info(String.format("opening JDBC connection to Hive on: {}", url));
+
+    if(hiveUgi == null)
+      return DriverManager.getConnection(url);
+
+    return  hiveUgi.doAs(new PrivilegedExceptionAction<Connection>() {
+      @Override
+      public Connection run() throws Exception {
+        return DriverManager.getConnection(url);
+      }
+    });
+  }
+
+
 }

@@ -26,13 +26,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConfUtil;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.VersionInfo;
 import org.apache.hive.hcatalog.templeton.tool.JobState;
@@ -207,6 +205,15 @@ public class AppConfig extends Configuration {
 
   private static final Log LOG = LogFactory.getLog(AppConfig.class);
 
+  /**
+   * JDBC connection to hive server2 for DDL/Hive queries
+   * to enable set 'templeton.ddl.mode' to 'jdbc'
+   */
+  public static final String DDL_MODE                 = "templeton.ddl.mode";
+  public static final String HIVE_KERBEROS_PRINCIPAL  = "hive.server2.kerberos.principal";
+  public static final String HIVE_KERBEROS_KEYTAB     = "hive.server2.kerberos.keytab";
+  public static final String HIVE_JDBC_URL            = "hive.jdbc.url";
+
   public AppConfig() {
     init();
     LOG.info("Using Hadoop version " + VersionInfo.getVersion());
@@ -286,12 +293,12 @@ public class AppConfig extends Configuration {
   private String dumpEnvironent() {
     StringBuilder sb = TempletonUtils.dumpPropMap("========WebHCat System.getenv()========", System.getenv());
     sb.append("START========WebHCat AppConfig.iterator()========: \n");
-    HiveConfUtil.dumpConfig(this, sb);
+    //HiveConfUtil.dumpConfig(this, sb);
     sb.append("END========WebHCat AppConfig.iterator()========: \n");
 
     sb.append(TempletonUtils.dumpPropMap("========WebHCat System.getProperties()========", System.getProperties()));
 
-    sb.append(HiveConfUtil.dumpConfig(new HiveConf()));
+    //sb.append(HiveConfUtil.dumpConfig(new HiveConf()));
     return sb.toString();
   }
 
@@ -419,4 +426,10 @@ public class AppConfig extends Configuration {
 
   public String zkHosts()          { return get(ZooKeeperStorage.ZK_HOSTS); }
   public int zkSessionTimeout()    { return getInt(ZooKeeperStorage.ZK_SESSION_TIMEOUT, 30000); }
+
+  public String hiveKerberosPrincipal(){ return get(HIVE_KERBEROS_PRINCIPAL); }
+  public String hiveKerberosKeytab()   { return get(HIVE_KERBEROS_KEYTAB); }
+  public String hiveJdbcUrl()   { return get(HIVE_JDBC_URL); }
+  public boolean jdbcMode()   { return "jdbc".equalsIgnoreCase(get(DDL_MODE)); }
+
 }

@@ -867,6 +867,13 @@ public class Server {
       throw new BadParam("Either execute or file parameter required");
     }
 
+    if(appConf.jdbcMode() && execute != null) {
+      LOG.info("Running Hive execute query with JDBC");
+      HcatDelegator d = new HcatDelegator(appConf, execService);
+      d.run(getDoAsUser(), execute, true, "", "");
+      return new EnqueueBean();
+    }
+
     //add all function arguments to a map
     Map<String, Object> userArgs = new HashMap<String, Object>();
     userArgs.put("user.name", getDoAsUser());
