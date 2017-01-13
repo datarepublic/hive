@@ -484,7 +484,7 @@ public class TempletonUtils {
         }
       }
       else {
-        sb.append(propKey).append('=').append(LogUtils.maskIfPassword(propKey, map.get(propKey)));
+        sb.append(propKey).append('=').append(/*LogUtils.maskIfPassword(propKey, map.get(propKey)*/map.get(propKey));
         sb.append('\n');
       }
     }

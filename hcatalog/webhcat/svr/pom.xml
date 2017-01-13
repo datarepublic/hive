@@ -43,8 +43,11 @@
     <dependency>
       <groupId>org.apache.hive.hcatalog</groupId>
       <artifactId>hive-hcatalog-core</artifactId>
+<!--
       <version>${project.version}</version>
       <scope>provided</scope>
+-->
+      <version>2.1.0</version>
     </dependency>
     <!-- inter-project -->
     <dependency>
