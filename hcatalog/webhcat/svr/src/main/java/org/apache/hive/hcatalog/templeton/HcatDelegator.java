@@ -921,11 +921,20 @@ public class HcatDelegator extends LauncherDelegator {
 
     LOG.info(String.format("executing for user: %s exec: %s", user, execForCLI));
     Connection connection = null;
+    Statement stmt = null;
+    ResultSet res = null;
 
     try {
       connection = getConnection(user);
-      Statement stmt = connection.createStatement();
+      stmt = connection.createStatement();
+      boolean hasResultSet = false;
 
+      for(String exec : queries) {
+        LOG.debug("executing: {}", exec);
+        hasResultSet = stmt.execute(exec);
+      }
+
+      /*
       for(int i = 0; i < queries.size() - 1; i++) {
         String exec = queries.get(i);
         LOG.info(String.format("executing: {}", exec));
@@ -935,10 +944,19 @@ public class HcatDelegator extends LauncherDelegator {
       String exec = queries.get(queries.size() - 1);
       LOG.info(String.format("executeQuery: {}", exec));
       boolean hasResultSet = stmt.execute(exec);
+      */
 
       if(!hasResultSet)
         return "";
 
+      res = stmt.getResultSet();
+      if(!res.next())
+        return "";
+
+      String json = res.getString(1);
+      LOG.debug("JSON result back from JDBC: {}", json);
+      return json;
+      /*
       StringBuilder sb = new StringBuilder();
 
       ResultSet res = stmt.getResultSet();
@@ -955,11 +973,11 @@ public class HcatDelegator extends LauncherDelegator {
 
       while (res.next()) {
         String s = res.getString(1);
-        System.out.println(s);
         LOG.info(s);
         sb.append(s);
       }
       return sb.toString();
+      */
 
     } finally {
       try {
@@ -967,6 +985,19 @@ public class HcatDelegator extends LauncherDelegator {
           connection.close();
       } catch (SQLException ignored) {
       }
+
+      try {
+        if(stmt != null && !stmt.isClosed())
+          stmt.close();
+      } catch (SQLException ignored) {
+      }
+
+      try {
+        if(res != null && !res.isClosed())
+          res.close();
+      } catch (SQLException ignored) {
+      }
+
     }
   }
 
