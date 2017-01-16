@@ -19,13 +19,11 @@
 package org.apache.hive.hcatalog.templeton;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.URI;
 import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -938,18 +936,6 @@ public class HcatDelegator extends LauncherDelegator {
         hasResultSet = stmt.execute(exec);
       }
 
-      /*
-      for(int i = 0; i < queries.size() - 1; i++) {
-        String exec = queries.get(i);
-        LOG.info("executing: {}", exec);
-        stmt.execute(exec);
-      }
-
-      String exec = queries.get(queries.size() - 1);
-      LOG.info("executeQuery: {}", exec);
-      boolean hasResultSet = stmt.execute(exec);
-      */
-
       if(!hasResultSet)
         return "";
 
@@ -960,29 +946,6 @@ public class HcatDelegator extends LauncherDelegator {
       String json = res.getString(1);
       LOG.debug("JSON result back from JDBC: {}", json);
       return json;
-      /*
-      StringBuilder sb = new StringBuilder();
-
-      ResultSet res = stmt.getResultSet();
-
-      ResultSetMetaData rsmd = res.getMetaData();
-      int cols = rsmd.getColumnCount();
-      LOG.debug("The query fetched {} columns\n", cols);
-      LOG.debug("These columns are: ");
-      for (int i = 1; i <= cols; i++) {
-        String colName = rsmd.getColumnName(i);
-        String colType = rsmd.getColumnTypeName(i);
-        LOG.info(colName + " of type " + colType);
-      }
-
-      while (res.next()) {
-        String s = res.getString(1);
-        LOG.info(s);
-        sb.append(s);
-      }
-      return sb.toString();
-      */
-
     } finally {
       try {
         if(connection != null && !connection.isClosed())
@@ -1007,7 +970,7 @@ public class HcatDelegator extends LauncherDelegator {
 
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
     final String url = appConf.hiveJdbcUrl() + ";hive.server2.proxy.user=" + user + "?hive.ddl.output.format=json;";
-    LOG.info("opening JDBC connection to Hive on: {}", url);
+    LOG.info("opening impersonate JDBC connection to Hive on: {}", url);
 
     if(hiveUgi == null)
       return DriverManager.getConnection(url);
