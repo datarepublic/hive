@@ -19,6 +19,7 @@
 package org.apache.hive.hcatalog.templeton;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
@@ -37,6 +38,8 @@ import org.apache.commons.exec.ExecuteException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.net.NetUtils;
+import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -63,8 +66,8 @@ public class HcatDelegator extends LauncherDelegator {
     this.execService = execService;
     jdbcMode = appConf.jdbcMode();
     if(jdbcMode && !hiveUgiInitilized) {
-        hiveUgi = getHiveUserGroupInformation(appConf);
-        hiveUgiInitilized = true;
+      hiveUgi = UserGroupInformation.isSecurityEnabled() ? getHiveUserGroupInformation(appConf) : null;
+      hiveUgiInitilized = true;
     }
   }
 
@@ -74,8 +77,11 @@ public class HcatDelegator extends LauncherDelegator {
       return null;
     }
     LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab()));
+
     try {
-      return UserGroupInformation.loginUserFromKeytabAndReturnUGI(appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab());
+      String hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), NetUtils.getHostname());
+      LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", hivePrincipal, appConf.hiveKerberosKeytab()));
+      return UserGroupInformation.loginUserFromKeytabAndReturnUGI(hivePrincipal, appConf.hiveKerberosKeytab());
     } catch (IOException e) {
       LOG.warn("Unable to create hive UGI.", e);
       return null;
@@ -930,7 +936,7 @@ public class HcatDelegator extends LauncherDelegator {
       boolean hasResultSet = false;
 
       for(String exec : queries) {
-        LOG.debug("executing: {}", exec);
+        LOG.debug(String.format("executing: %s", exec));
         hasResultSet = stmt.execute(exec);
       }
 
@@ -954,7 +960,7 @@ public class HcatDelegator extends LauncherDelegator {
         return "";
 
       String json = res.getString(1);
-      LOG.debug("JSON result back from JDBC: {}", json);
+      LOG.debug(String.format("JSON result back from JDBC: %s", json));
       return json;
       /*
       StringBuilder sb = new StringBuilder();
