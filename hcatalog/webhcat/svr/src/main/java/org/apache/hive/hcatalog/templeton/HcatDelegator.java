@@ -19,6 +19,7 @@
 package org.apache.hive.hcatalog.templeton;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
@@ -35,6 +36,8 @@ import javax.ws.rs.core.Response;
 
 import org.apache.commons.exec.ExecuteException;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.net.NetUtils;
+import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,8 +66,8 @@ public class HcatDelegator extends LauncherDelegator {
     this.execService = execService;
     jdbcMode = appConf.jdbcMode();
     if(jdbcMode && !hiveUgiInitilized) {
-        hiveUgi = getHiveUserGroupInformation(appConf);
-        hiveUgiInitilized = true;
+      hiveUgi = UserGroupInformation.isSecurityEnabled() ? getHiveUserGroupInformation(appConf) : null;
+      hiveUgiInitilized = true;
     }
   }
 
@@ -73,9 +76,10 @@ public class HcatDelegator extends LauncherDelegator {
       LOG.info("Hive server2 Kerberos Principal or Keytab not defined. not loading UserGroupInformation.");
       return null;
     }
-    LOG.debug("Login to Hive Server2 with {} using keytab: {}", appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab());
     try {
-      return UserGroupInformation.loginUserFromKeytabAndReturnUGI(appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab());
+      String hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), NetUtils.getHostname());
+      LOG.debug("Login to Hive Server2 with {} using keytab: {}", hivePrincipal, appConf.hiveKerberosKeytab());
+      return UserGroupInformation.loginUserFromKeytabAndReturnUGI(hivePrincipal, appConf.hiveKerberosKeytab());
     } catch (IOException e) {
       LOG.warn("Unable to create hive UGI.", e);
       return null;
