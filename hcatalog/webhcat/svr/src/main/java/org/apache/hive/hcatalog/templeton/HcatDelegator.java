@@ -920,40 +920,40 @@ public class HcatDelegator extends LauncherDelegator {
 
   private static final Pattern USER_DB_PATTERN = Pattern.compile("^\\s*use ([^; ]+)\\s*;\\s*([^;]+);", Pattern.CASE_INSENSITIVE);
 
-  static class CatalogStatement {
-    final String catalog;
+  static class SchemaStatement {
+    final String schema;
     final String statement;
 
-    public CatalogStatement(String statement) {
+    public SchemaStatement(String statement) {
       this(null, statement);
     }
 
-    public CatalogStatement(String catalog, String statement) {
-      this.catalog = catalog;
+    public SchemaStatement(String schema, String statement) {
+      this.schema = schema;
       this.statement = statement;
     }
   }
 
-  static CatalogStatement getCatalogStatement(String execForCLI) {
+  static SchemaStatement getCatalogStatement(String execForCLI) {
     Matcher m = USER_DB_PATTERN.matcher(execForCLI);
-    return m.find() ? new CatalogStatement(m.group(1), m.group(2)) : new CatalogStatement(execForCLI.replaceAll(";", ""));
+    return m.find() ? new SchemaStatement(m.group(1), m.group(2)) : new SchemaStatement(execForCLI.replaceAll(";", ""));
   }
 
   private String jdbc(String user, String execForCLI) throws IOException, InterruptedException, SQLException {
 
 
-    CatalogStatement cs = getCatalogStatement(execForCLI);
+    SchemaStatement cs = getCatalogStatement(execForCLI);
 
-    LOG.info(String.format("executing for user: {} catalog: {}, statement: {}", user, StringUtils.defaultString(cs.catalog), cs.statement));
+    LOG.info(String.format("executing for user: {} schema: {}, statement: {}", user, StringUtils.defaultString(cs.schema), cs.statement));
     Connection connection = null;
     Statement stmt = null;
     ResultSet res = null;
 
     try {
       connection = getConnection(user);
-      if(cs.catalog != null) {
-        LOG.debug(String.format("set catalog: {}", cs.catalog));
-        connection.setCatalog(cs.catalog);
+      if(cs.schema != null) {
+        LOG.debug(String.format("set schema: {}", cs.schema));
+        connection.setSchema(cs.schema);
       }
 
       stmt = connection.createStatement();
@@ -999,7 +999,7 @@ public class HcatDelegator extends LauncherDelegator {
   }
 
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
-    final String impersonate = hiveUgi == null ? "" : /*";principal=" + hivePrincipal +*/ ";hive.server2.proxy.user=" + user;
+    final String impersonate = hiveUgi == null ? "" : ";hive.server2.proxy.user=" + user;
     final String url = appConf.hiveJdbcUrl() + impersonate + "?hive.ddl.output.format=json;";
     LOG.info(String.format("opening JDBC connection to Hive on: %s", url));
 
