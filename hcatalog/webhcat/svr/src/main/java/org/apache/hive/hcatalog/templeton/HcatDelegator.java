@@ -19,6 +19,7 @@
 package org.apache.hive.hcatalog.templeton;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
@@ -77,7 +78,7 @@ public class HcatDelegator extends LauncherDelegator {
     LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab()));
 
     try {
-      String hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), NetUtils.getHostname());
+      String hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), InetAddress.getLocalHost());
       LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", hivePrincipal, appConf.hiveKerberosKeytab()));
       return UserGroupInformation.loginUserFromKeytabAndReturnUGI(hivePrincipal, appConf.hiveKerberosKeytab());
     } catch (IOException e) {
@@ -985,6 +986,5 @@ public class HcatDelegator extends LauncherDelegator {
       }
     });
   }
-
 
 }
