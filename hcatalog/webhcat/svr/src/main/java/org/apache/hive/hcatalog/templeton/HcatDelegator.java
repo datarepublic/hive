@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.ws.rs.core.Response;
 
 import org.apache.commons.exec.ExecuteException;
@@ -915,37 +917,70 @@ public class HcatDelegator extends LauncherDelegator {
     return jsonRun(user, exec, group, permissions, false);
   }
 
+  private static final Pattern USER_DB_PATTERN = Pattern.compile("^\\s*use ([^; ]+)\\s*;\\s*([^;]+);", Pattern.CASE_INSENSITIVE);
+
+  static class CatalogStatement {
+    final String catalog;
+    final String statement;
+
+    public CatalogStatement(String statement) {
+      this(null, statement);
+    }
+
+    public CatalogStatement(String catalog, String statement) {
+      this.catalog = catalog;
+      this.statement = statement;
+    }
+  }
+
+  static CatalogStatement getCatalogStatement(String execForCLI) {
+    Matcher m = USER_DB_PATTERN.matcher(execForCLI);
+    return m.find() ? new CatalogStatement(m.group(1), m.group(2)) : new CatalogStatement(execForCLI.replaceAll(";", ""));
+  }
+
   private String jdbc(String user, String execForCLI) throws IOException, InterruptedException, SQLException {
+
+
+    CatalogStatement cs = getCatalogStatement(execForCLI);
+
+    /*
     List<String> queries = new ArrayList<>();
     for(String s : StringUtils.split(execForCLI, ';')) {
       if (StringUtils.isBlank(s)) continue;
       queries.add(s);
     }
+    */
 
-    LOG.info("executing for user: {} exec: {}", user, execForCLI);
+    LOG.info("executing for user: {} catalog: {}, statement: {}", user, StringUtils.defaultString(cs.catalog), cs.statement);
     Connection connection = null;
     Statement stmt = null;
     ResultSet res = null;
 
     try {
       connection = getConnection(user);
-      stmt = connection.createStatement();
-      boolean hasResultSet = false;
-
-      for(String exec : queries) {
-        LOG.debug("executing: {}", exec);
-        hasResultSet = stmt.execute(exec);
+      if(cs.catalog != null) {
+        LOG.debug("set catalog: {}", cs.catalog);
+        connection.setCatalog(cs.catalog);
       }
 
-      if(!hasResultSet)
+      stmt = connection.createStatement();
+
+      LOG.debug("executing: {}", cs.statement);
+      boolean hasResultSet = stmt.execute(cs.statement);
+
+      if(!hasResultSet) {
+        LOG.debug("no result set flag from statement. returning.");
         return "";
+      }
 
       res = stmt.getResultSet();
-      if(!res.next())
+      if(!res.next()) {
+        LOG.debug("no result set next from statement. returning.");
         return "";
+      }
 
       String json = res.getString(1);
-      LOG.debug("JSON result back from JDBC: {}", json);
+      LOG.debug("JSON result from JDBC: {}", json);
       return json;
     } finally {
       try {
@@ -970,7 +1005,7 @@ public class HcatDelegator extends LauncherDelegator {
   }
 
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
-    final String impersonate = hiveUgi == null ? "" : ";principal=" + hivePrincipal + ";hive.server2.proxy.user=" + user;
+    final String impersonate = hiveUgi == null ? "" : /*";principal=" + hivePrincipal +*/ ";hive.server2.proxy.user=" + user;
     final String url = appConf.hiveJdbcUrl() + impersonate + "?hive.ddl.output.format=json;";
     LOG.info("opening JDBC connection to Hive on: {}", url);
 
