@@ -934,7 +934,7 @@ public class HcatDelegator extends LauncherDelegator {
     }
   }
 
-  static SchemaStatement getCatalogStatement(String execForCLI) {
+  static SchemaStatement getSchemaStatement(String execForCLI) {
     Matcher m = USER_DB_PATTERN.matcher(execForCLI);
     return m.find() ? new SchemaStatement(m.group(1), m.group(2)) : new SchemaStatement(execForCLI.replaceAll(";", ""));
   }
@@ -942,7 +942,7 @@ public class HcatDelegator extends LauncherDelegator {
   private String jdbc(String user, String execForCLI) throws IOException, InterruptedException, SQLException {
 
 
-    SchemaStatement cs = getCatalogStatement(execForCLI);
+    SchemaStatement cs = getSchemaStatement(execForCLI);
 
     LOG.info(String.format("executing for user: {} schema: {}, statement: {}", user, StringUtils.defaultString(cs.schema), cs.statement));
     Connection connection = null;
