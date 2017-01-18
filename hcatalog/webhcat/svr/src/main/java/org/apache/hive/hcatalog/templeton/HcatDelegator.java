@@ -59,6 +59,7 @@ public class HcatDelegator extends LauncherDelegator {
   private boolean jdbcMode;
   private static boolean hiveUgiInitilized = false;
   private static UserGroupInformation hiveUgi;
+  private static String hivePrincipal;
 
   public HcatDelegator(AppConfig appConf, ExecService execService) {
     super(appConf);
@@ -973,7 +974,8 @@ public class HcatDelegator extends LauncherDelegator {
   }
 
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
-    final String url = appConf.hiveJdbcUrl() + ";hive.server2.proxy.user=" + user + "?hive.ddl.output.format=json;";
+    final String impersonate = hiveUgi == null ? "" : ";principal=" + hivePrincipal + ";hive.server2.proxy.user=" + user;
+    final String url = appConf.hiveJdbcUrl() + impersonate + "?hive.ddl.output.format=json;";
     LOG.info(String.format("opening JDBC connection to Hive on: {}", url));
 
     if(hiveUgi == null)
