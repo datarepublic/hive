@@ -81,7 +81,7 @@ public class HcatDelegator extends LauncherDelegator {
     try {
       hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), InetAddress.getLocalHost());
       LOG.debug("Login to Hive Server2 with {} using keytab: {}", hivePrincipal, appConf.hiveKerberosKeytab());
-      hiveJdbcUrl = SecurityUtil.getServerPrincipal(appConf.hiveJdbcUrl(), InetAddress.getLocalHost());
+      hiveJdbcUrl = StringUtils.replace(appConf.hiveJdbcUrl(), "_HOST", InetAddress.getLocalHost().getCanonicalHostName(), 1);
       LOG.debug("Hive JDBC URL: {}", hiveJdbcUrl);
       return UserGroupInformation.loginUserFromKeytabAndReturnUGI(hivePrincipal, appConf.hiveKerberosKeytab());
     } catch (IOException e) {
