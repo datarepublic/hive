@@ -60,6 +60,7 @@ public class HcatDelegator extends LauncherDelegator {
   private static boolean hiveUgiInitilized = false;
   private static UserGroupInformation hiveUgi;
   private static String hivePrincipal;
+  private static String hiveJdbcUrl;
 
   public HcatDelegator(AppConfig appConf, ExecService execService) {
     super(appConf);
@@ -79,8 +80,10 @@ public class HcatDelegator extends LauncherDelegator {
     LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", appConf.hiveKerberosPrincipal(), appConf.hiveKerberosKeytab()));
 
     try {
-      String hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), InetAddress.getLocalHost());
+      hivePrincipal = SecurityUtil.getServerPrincipal(appConf.hiveKerberosPrincipal(), InetAddress.getLocalHost());
       LOG.debug(String.format("Login to Hive Server2 with %s using keytab: %s", hivePrincipal, appConf.hiveKerberosKeytab()));
+      hiveJdbcUrl = SecurityUtil.getServerPrincipal(appConf.hiveJdbcUrl(), InetAddress.getLocalHost());
+      LOG.debug(String.format("Hive JDBC URL: {}", hiveJdbcUrl));
       return UserGroupInformation.loginUserFromKeytabAndReturnUGI(hivePrincipal, appConf.hiveKerberosKeytab());
     } catch (IOException e) {
       LOG.warn("Unable to create hive UGI.", e);
@@ -1000,7 +1003,7 @@ public class HcatDelegator extends LauncherDelegator {
 
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
     final String impersonate = hiveUgi == null ? "" : ";hive.server2.proxy.user=" + user;
-    final String url = appConf.hiveJdbcUrl() + impersonate + "?hive.ddl.output.format=json;";
+    final String url = hiveJdbcUrl + impersonate + "?hive.ddl.output.format=json;";
     LOG.info(String.format("opening JDBC connection to Hive on: %s", url));
 
     if(hiveUgi == null)
