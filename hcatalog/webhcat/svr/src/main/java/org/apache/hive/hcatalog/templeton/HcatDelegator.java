@@ -29,6 +29,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -38,6 +39,7 @@ import org.apache.commons.exec.ExecuteException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -65,7 +67,7 @@ public class HcatDelegator extends LauncherDelegator {
   public HcatDelegator(AppConfig appConf, ExecService execService) {
     super(appConf);
     this.execService = execService;
-    jdbcMode = appConf.jdbcMode();
+    this.jdbcMode = appConf.jdbcMode();
     if(jdbcMode && !hiveUgiInitilized) {
       hiveUgi = UserGroupInformation.isSecurityEnabled() ? getHiveUserGroupInformation(appConf) : null;
       hiveUgiInitilized = true;
@@ -92,11 +94,20 @@ public class HcatDelegator extends LauncherDelegator {
     }
   }
 
+  // Run with existing JDBC Connection
+  private ExecBean run(Connection conn, String exec) throws ExecuteException{
+    try {
+      return new ExecBean(jdbc(conn, exec), "", 0);
+    } catch (Exception e){
+        LOG.error(String.format("unable to run JDBC %s", exec), e);
+        throw new ExecuteException("Failure calling Hive JDBC: " + exec, 1);
+    }
+  }
+
   /**
    * Run the local hcat executable.
    */
-  public ExecBean run(String user, String exec, boolean format,
-            String group, String permissions)
+  public ExecBean run(String user, String exec, boolean format, String group, String permissions)
     throws NotAuthorizedException, BusyException, ExecuteException, IOException {
 
     if(jdbcMode) {
@@ -171,20 +182,36 @@ public class HcatDelegator extends LauncherDelegator {
   /**
    * Return a json description of the database.
    */
-  public Response descDatabase(String user, String db, boolean extended)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
+  public Response descDatabase(String user, String db)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
     String exec = "desc database " + db + "; ";
-    if (extended)
-      exec = "desc database extended " + db + "; ";
 
     try {
-      String res = jsonRun(user, exec);
-      return JsonBuilder.create(res).build();
+        String res = jsonRun(user, exec);
+        return JsonBuilder.create(res).build();
     } catch (HcatException e) {
-      throw new HcatException("unable to describe database: " + db,
-        e.execBean, exec);
+      throw new HcatException("unable to describe database: " + db, e.execBean, exec);
     }
+  }
+
+  public Response descDatabaseExtended(Connection conn, String user, String db)
+          throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    String exec = "desc database extended " + db + "; ";
+    boolean isConnValid = this.isConnValid(conn);
+    try{
+      Connection _conn = this.getConnection(conn, user);
+      try{
+        String res = jsonRun(_conn, exec);
+        Response listTblsResp = this.listTablesExtended(_conn, user, db, null);
+        return JsonBuilder.create(res)
+                .put("tables", listTblsResp.getEntity())
+                .build();
+      } finally{ if(!isConnValid){ _conn.close(); }}
+    } catch(SQLException|InterruptedException e){
+      throw new ExecuteException("Failure calling Hive JDBC: " + exec, 1);
+    }
+
   }
 
   /**
@@ -192,8 +219,7 @@ public class HcatDelegator extends LauncherDelegator {
    * databases.
    */
   public Response listDatabases(String user, String dbPattern)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
     String exec = String.format("show databases like '%s';", dbPattern);
     try {
       String res = jsonRun(user, exec);
@@ -205,12 +231,57 @@ public class HcatDelegator extends LauncherDelegator {
     }
   }
 
+  private Response listDatabases(Connection conn, String user, String dbPattern)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    boolean isConnValid = this.isConnValid(conn);
+    String exec = String.format("show databases like '%s';", dbPattern);
+
+    try {
+      Connection _conn = this.getConnection(conn, user);
+      try {
+        String res = jsonRun(_conn, exec);
+        return JsonBuilder.create(res)
+                .build();
+      } finally { if(!isConnValid){ _conn.close(); } }
+    } catch(InterruptedException|SQLException e){
+      throw new ExecuteException("Unable to list databases: " + exec, 1);
+    } catch (HcatException e) {
+      throw new HcatException("unable to show databases for: " + dbPattern, e.execBean, exec);
+    }
+  }
+
+  public Response listDatabasesExtended(Connection conn, String user, String dbPattern)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    boolean isConnValid = this.isConnValid(conn);
+    try {
+      Connection _conn = this.getConnection(conn, user);
+      try {
+        Response listDbsResp = this.listDatabases(_conn, user, dbPattern);
+        if (listDbsResp.getStatus() != HttpStatus.OK_200) {return listDbsResp; }
+        List<Map> databases = new LinkedList<>();
+        Map m = (Map) listDbsResp.getEntity();
+
+        for (String dbId : ((List<String>) m.get("databases"))) {
+          Response listDbResp = this.descDatabaseExtended(_conn, user, dbId);
+          databases.add((Map) listDbResp.getEntity());
+        }
+        return JsonBuilder
+                .create()
+                .put("databases", databases)
+                .build();
+      } finally{ if(!isConnValid) { _conn.close(); } }
+    } catch(InterruptedException|SQLException e) {
+      throw new ExecuteException("unable to list database extended: " + dbPattern, 1);
+    }
+  }
+
   /**
    * Create a database with the given name
    */
   public Response createDatabase(String user, DatabaseDesc desc)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
     String exec = "create database";
     if (desc.ifNotExists)
       exec += " if not exists";
@@ -304,14 +375,12 @@ public class HcatDelegator extends LauncherDelegator {
   /**
    * Return a json description of the table.
    */
-  public Response descTable(String user, String db, String table, boolean extended)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
+  public Response descTable(String user, String db, String table)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
     String exec = "use " + db + "; ";
-    if (extended)
-      exec += "desc extended " + table + "; ";
-    else
-      exec += "desc " + table + "; ";
+    exec += "desc " + table + "; ";
+
     try {
       String res = jsonRun(user, exec);
       return JsonBuilder.create(res)
@@ -324,15 +393,38 @@ public class HcatDelegator extends LauncherDelegator {
     }
   }
 
+  public Response descTableExtended(Connection conn, String user, String db, String table)
+        throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    String exec = String.format(" USE %s ; DESC EXTENDED %s; ", db, table);
+    boolean isConnValid = this.isConnValid(conn);
+    try {
+      Connection _conn = this.getConnection(conn, user);
+      try {
+        String res = jsonRun(_conn, exec);
+        return JsonBuilder.create(res)
+            .put("database", db)
+            .put("table", table)
+            .build();
+      } finally {
+        if( !isConnValid ){ _conn.close(); }
+      }
+    } catch(InterruptedException|SQLException e){
+      throw new ExecuteException("unable to describe database: " + db, 1);
+    } catch (HcatException e) {
+      throw new HcatException("unable to describe database: " + db, e.execBean, exec);
+    }
+  }
+
   /**
    * Return a json "show table like".  This will return a list of
    * tables.
    */
   public Response listTables(String user, String db, String tablePattern)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
-    String exec = String.format("use %s; show tables like '%s';",
-      db, tablePattern);
+          throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    if(tablePattern == null){ tablePattern = "*"; }
+    String exec = String.format("use %s; show tables like '%s';", db, tablePattern);
     try {
       String res = jsonRun(user, exec);
       return JsonBuilder.create(res)
@@ -344,49 +436,103 @@ public class HcatDelegator extends LauncherDelegator {
     }
   }
 
+  private Response listTables(Connection conn, String user, String db, String tablePattern)
+          throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+    boolean isConnValid = this.isConnValid(conn);
+    if(tablePattern == null){ tablePattern = "*"; }
+    String exec = String.format("use %s; show tables like '%s';", db, tablePattern);
+
+    try {
+      Connection _conn = this.getConnection(conn, user);
+      if (tablePattern == null) { tablePattern = "*"; }
+      try {
+        String res = jsonRun(_conn, exec);
+        return JsonBuilder.create(res)
+                .put("database", db)
+                .build();
+      } finally { if(!isConnValid){_conn.close();}}
+    } catch (HcatException e) {
+      throw new HcatException("unable to show tables for: " + tablePattern, e.execBean, exec);
+    } catch (InterruptedException|SQLException e){
+      throw new ExecuteException("unable to describe database: " + db, 1);
+    }
+  }
+
+  public Response listTablesExtended(Connection conn, String user, String db, String tablePattern)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    boolean isConnValid = this.isConnValid(conn);
+    try {
+      Connection _conn = this.getConnection(conn, user);
+      try {
+        Response listTblResp = this.listTables(_conn, user, db, tablePattern);
+        if (listTblResp.getStatus() != HttpStatus.OK_200) { return listTblResp; }
+
+        List<Map> tables = new LinkedList<>();
+        Map m = (Map) listTblResp.getEntity();
+
+        for (String tableId : (List<String>) (m.get("tables"))) {
+          Response tblResp = this.descExtendedTable(_conn, user, db, tableId);
+          tables.add((Map) tblResp.getEntity());
+        }
+        return JsonBuilder.create()
+                .put("tables", tables)
+                .put("database", db)
+                .build();
+      } finally { if(!isConnValid) { _conn.close(); } }
+    } catch(InterruptedException|SQLException e){
+      throw new ExecuteException("unable to describe database: " + db, 1);
+    }
+  }
+
   /**
    * Return a json "show table extended like" with extra info from "desc exteded"
    * This will return table with exact name match.
    */
-  public Response descExtendedTable(String user, String db, String table)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
-    String exec = String.format("use %s; show table extended like %s;",
-      db, table);
+  public Response descExtendedTable(Connection conn, String user, String db, String table)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+
+    String exec = String.format("use %s; show table extended like %s;", db, table);
+    boolean isConnValid = this.isConnValid(conn);
     try {
-      //get detailed "tableInfo" from query "desc extended tablename;"
-      Response res0 = descTable(user, db, table, true);
-      if (res0.getStatus() != HttpStatus.OK_200)
+      Connection _conn = this.getConnection(conn, user);
+      try {
+        //get detailed "tableInfo" from query "desc extended tablename;"
+        Response res0 = descTableExtended(_conn, user, db, table);
+        if (res0.getStatus() != HttpStatus.OK_200)
           return res0;
-      Map m = (Map) res0.getEntity();
-      Map tableInfo = (Map) m.get("tableInfo");
+        Map m = (Map) res0.getEntity();
+        Map tableInfo = (Map) m.get("tableInfo");
 
-      String res = jsonRun(user, exec);
-      JsonBuilder jb = JsonBuilder.create(singleTable(res, table))
-        .remove("tableName")
-        .put("database", db)
-        .put("table", table)
-        .put("retention", tableInfo.get("retention"))
-        .put("sd", tableInfo.get("sd"))
-        .put("parameters", tableInfo.get("parameters"))
-        .put("parametersSize", tableInfo.get("parametersSize"))
-        .put("tableType", tableInfo.get("tableType"));
+        String res = jsonRun(_conn, exec);
+        JsonBuilder jb = JsonBuilder.create(singleTable(res, table))
+                .remove("tableName")
+                .put("database", db)
+                .put("table", table)
+                .put("retention", tableInfo.get("retention"))
+                .put("sd", tableInfo.get("sd"))
+                .put("parameters", tableInfo.get("parameters"))
+                .put("parametersSize", tableInfo.get("parametersSize"))
+                .put("tableType", tableInfo.get("tableType"));
 
-      // If we can get them from HDFS, add group and permission
-      String loc = (String) jb.getMap().get("location");
-      if (loc != null && loc.startsWith("hdfs://")) {
-        try {
-          FileSystem fs = FileSystem.get(appConf);
-          FileStatus status = fs.getFileStatus(new Path(new URI(loc)));
-          jb.put("group", status.getGroup());
-          jb.put("permission", status.getPermission().toString());
-        } catch (Exception e) {
-          LOG.warn(e.getMessage() + " Couldn't get permissions for " + loc);
+        // If we can get them from HDFS, add group and permission
+        String loc = (String) jb.getMap().get("location");
+        if (loc != null && loc.startsWith("hdfs://")) {
+          try {
+            FileSystem fs = FileSystem.get(appConf);
+            FileStatus status = fs.getFileStatus(new Path(new URI(loc)));
+            jb.put("group", status.getGroup());
+            jb.put("permission", status.getPermission().toString());
+          } catch (Exception e) {
+            LOG.warn(e.getMessage() + " Couldn't get permissions for " + loc);
+          }
         }
-      }
-      return jb.build();
+        return jb.build();
+      } finally { if(!isConnValid){ _conn.close(); } }
+    } catch(InterruptedException|SQLException e){
+      throw new ExecuteException("unable to describe database: " + db, 1);
     } catch (HcatException e) {
-      throw new HcatException("unable to show table: " + table, e.execBean, exec);
+        throw new HcatException("unable to show table: " + table, e.execBean, exec);
     }
   }
 
@@ -575,8 +721,7 @@ public class HcatDelegator extends LauncherDelegator {
                 String group, String permissions)
     throws HcatException, NotAuthorizedException, BusyException,
     ExecuteException, IOException {
-    String exec = String.format("use %s; alter table %s rename to %s;",
-      db, oldTable, newTable);
+    String exec = String.format("use %s; alter table %s rename to %s;", db, oldTable, newTable);
     try {
       String res = jsonRun(user, exec, group, permissions, true);
       return JsonBuilder.create(res)
@@ -596,7 +741,7 @@ public class HcatDelegator extends LauncherDelegator {
                     String table, String property)
     throws HcatException, NotAuthorizedException, BusyException,
     ExecuteException, IOException {
-    Response res = descTable(user, db, table, true);
+    Response res = descTable(user, db, table);
     if (res.getStatus() != HttpStatus.OK_200)
       return res;
     Map props = tableProperties(res.getEntity());
@@ -622,7 +767,7 @@ public class HcatDelegator extends LauncherDelegator {
   public Response listTableProperties(String user, String db, String table)
     throws HcatException, NotAuthorizedException, BusyException,
     ExecuteException, IOException {
-    Response res = descTable(user, db, table, true);
+    Response res = descTable(user, db, table);
     if (res.getStatus() != HttpStatus.OK_200)
       return res;
     Map props = tableProperties(res.getEntity());
@@ -797,7 +942,7 @@ public class HcatDelegator extends LauncherDelegator {
     throws HcatException, NotAuthorizedException, BusyException,
     ExecuteException, IOException {
     try {
-      return descTable(user, db, table, false);
+      return descTable(user, db, table);
     } catch (HcatException e) {
       throw new HcatException("unable to show columns for table: " + table,
         e.execBean, e.statement);
@@ -892,17 +1037,14 @@ public class HcatDelegator extends LauncherDelegator {
     return true;
   }
 
-  // Run an hcat expression and return just the json outout.
-  private String jsonRun(String user, String exec,
-               String group, String permissions,
-               boolean requireEmptyOutput)
-    throws HcatException, NotAuthorizedException, BusyException,
-    ExecuteException, IOException {
-    ExecBean res = run(user, exec, true, group, permissions);
-
-    if (!isValid(res, requireEmptyOutput))
+  // Run an hcat expression with existing connection
+  private String jsonRun(Connection conn, String exec)
+          throws HcatException, NotAuthorizedException, BusyException, IOException{
+    //     ExecBean res = run(user, exec, true, null, null);
+    ExecBean res = run(conn, exec);
+    if(!isValid(res, false)){
       throw new HcatException("Failure calling hcat: " + exec, res, exec);
-
+    }
     return res.stdout;
   }
 
@@ -915,11 +1057,21 @@ public class HcatDelegator extends LauncherDelegator {
   }
 
   // Run an hcat expression and return just the json outout.
-  private String jsonRun(String user, String exec,
-               String group, String permissions)
+  private String jsonRun(String user, String exec, String group, String permissions)
     throws HcatException, NotAuthorizedException, BusyException,
     ExecuteException, IOException {
     return jsonRun(user, exec, group, permissions, false);
+  }
+
+    // Run an hcat expression and return just the json outout.
+  private String jsonRun(String user, String exec, String group, String permissions, boolean requireEmptyOutput)
+    throws HcatException, NotAuthorizedException, BusyException, ExecuteException, IOException {
+    ExecBean res = run(user, exec, true, group, permissions);
+
+    if (!isValid(res, requireEmptyOutput)) {
+      throw new HcatException("Failure calling hcat: " + exec, res, exec);
+    }
+    return res.stdout;
   }
 
   private static final Pattern USER_DB_PATTERN = Pattern.compile("^\\s*use ([^; ]+)\\s*;\\s*([^;]+);", Pattern.CASE_INSENSITIVE);
@@ -943,35 +1095,31 @@ public class HcatDelegator extends LauncherDelegator {
     return m.find() ? new SchemaStatement(m.group(1), m.group(2)) : new SchemaStatement(execForCLI.replaceAll(";", ""));
   }
 
-  private String jdbc(String user, String execForCLI) throws IOException, InterruptedException, SQLException {
 
-
+  private String jdbc(Connection connection, String execForCLI) throws IOException, InterruptedException, SQLException {
     SchemaStatement cs = getSchemaStatement(execForCLI);
 
-    LOG.info(String.format("executing for user: {} schema: {}, statement: {}", user, StringUtils.defaultString(cs.schema), cs.statement));
-    Connection connection = null;
+    LOG.info(String.format("executing using connection: %s, schema: %s, statement: %s", connection, StringUtils.defaultString(cs.schema), cs.statement));
     Statement stmt = null;
     ResultSet res = null;
 
     try {
-      connection = getConnection(user);
-      if(cs.schema != null) {
-        LOG.debug(String.format("set schema: {}", cs.schema));
+      if (cs.schema != null) {
+        LOG.debug(String.format("set schema: %s", cs.schema));
         connection.setSchema(cs.schema);
       }
-
       stmt = connection.createStatement();
 
-      LOG.debug(String.format("executing: {}", cs.statement));
+      LOG.debug(String.format("executing: %s", cs.statement));
       boolean hasResultSet = stmt.execute(cs.statement);
 
-      if(!hasResultSet) {
+      if (!hasResultSet) {
         LOG.debug("no result set flag from statement. returning.");
         return "";
       }
 
       res = stmt.getResultSet();
-      if(!res.next()) {
+      if (!res.next()) {
         LOG.debug("no result set next from statement. returning.");
         return "";
       }
@@ -980,26 +1128,42 @@ public class HcatDelegator extends LauncherDelegator {
       LOG.debug(String.format("JSON result back from JDBC: %s", json));
       return json;
 
-    } finally {
+    } finally{
       try {
-        if(connection != null && !connection.isClosed())
-          connection.close();
-      } catch (SQLException ignored) {
-      }
+        if(stmt != null && !stmt.isClosed()) { stmt.close(); }
+      } catch (SQLException ignored) {}
 
       try {
-        if(stmt != null && !stmt.isClosed())
-          stmt.close();
-      } catch (SQLException ignored) {
-      }
-
-      try {
-        if(res != null && !res.isClosed())
-          res.close();
-      } catch (SQLException ignored) {
-      }
-
+        if(res != null && !res.isClosed()) {res.close();}
+      } catch (SQLException ignored) {}
     }
+  }
+
+  private String jdbc(String user, String execForCLI) throws IOException, InterruptedException, SQLException {
+    Connection connection = null;
+    try{
+      connection = this.getConnection(user);
+      return this.jdbc(connection, execForCLI);
+    } finally {
+      try{
+        if(connection != null && !connection.isClosed()){ connection.close(); }
+      } catch (SQLException ignored) {}
+    }
+  }
+
+  private boolean isConnValid(Connection conn){
+    try {
+      return conn != null && !conn.isClosed();
+    } catch (SQLException e){ return false; }
+  }
+
+  private Connection getConnection(Connection conn, final String user) throws IOException, InterruptedException, SQLException {
+    if( !this.isConnValid(conn) ){
+      LOG.debug("Connection invalid. getting a new one.");
+      return this.getConnection(user);
+    }
+    LOG.debug("Re-using existing connection");
+    return conn;
   }
 
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {

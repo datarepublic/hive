@@ -46,7 +46,6 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriInfo;
-
 import org.apache.commons.exec.ExecuteException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -55,6 +54,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.authentication.client.PseudoAuthenticator;
 import org.apache.hive.hcatalog.templeton.LauncherDelegator.JobType;
 import org.apache.hive.hcatalog.templeton.tool.TempletonUtils;
+
 
 /**
  * The Templeton Web API server.
@@ -226,7 +226,7 @@ public class Server {
   @Path("ddl/database/{db}/table")
   @Produces(MediaType.APPLICATION_JSON)
   public Response listTables(@PathParam("db") String db,
-                 @QueryParam("like") String tablePattern)
+                 @QueryParam("like") String tablePattern, @QueryParam("format") String format)
     throws HcatException, NotAuthorizedException, BusyException,
     BadParam, ExecuteException, IOException {
     verifyUser();
@@ -236,7 +236,12 @@ public class Server {
     if (!TempletonUtils.isset(tablePattern)) {
       tablePattern = "*";
     }
-    return d.listTables(getDoAsUser(), db, tablePattern);
+
+    if("extended".equalsIgnoreCase(format)){
+      return d.listTablesExtended(null, getDoAsUser(), db, tablePattern);
+    } else {
+      return d.listTables(getDoAsUser(), db, tablePattern);
+    }
   }
 
   /**
@@ -301,10 +306,9 @@ public class Server {
 
     HcatDelegator d = new HcatDelegator(appConf, execService);
     if ("extended".equals(format)) {
-      return d.descExtendedTable(getDoAsUser(), db, table);
-    }
-    else {
-      return d.descTable(getDoAsUser(), db, table, false);
+      return d.descExtendedTable(null, getDoAsUser(), db, table);
+    } else {
+      return d.descTable(getDoAsUser(), db, table);
     }
   }
 
@@ -499,16 +503,19 @@ public class Server {
   @GET
   @Path("ddl/database/")
   @Produces(MediaType.APPLICATION_JSON)
-  public Response listDatabases(@QueryParam("like") String dbPattern)
-    throws HcatException, NotAuthorizedException, BusyException,
-    BadParam, ExecuteException, IOException {
+  public Response listDatabases(@QueryParam("like") String dbPattern, @QueryParam("format") String format)
+    throws HcatException, NotAuthorizedException, BusyException, BadParam, ExecuteException, IOException {
     verifyUser();
 
     HcatDelegator d = new HcatDelegator(appConf, execService);
-    if (!TempletonUtils.isset(dbPattern)) {
-      dbPattern = "*";
+    if (!TempletonUtils.isset(dbPattern)) { dbPattern = "*"; }
+
+    if("extended".equalsIgnoreCase(format)){
+      LOG.debug("Listing all databases extended");
+      return d.listDatabasesExtended(null, getDoAsUser(), dbPattern);
+    } else{
+      return d.listDatabases(getDoAsUser(), dbPattern);
     }
-    return d.listDatabases(getDoAsUser(), dbPattern);
   }
 
   /**
@@ -524,7 +531,12 @@ public class Server {
     verifyUser();
     verifyDdlParam(db, ":db");
     HcatDelegator d = new HcatDelegator(appConf, execService);
-    return d.descDatabase(getDoAsUser(), db, "extended".equals(format));
+
+    if( "extended".equalsIgnoreCase(format)) {
+      return d.descDatabaseExtended(null, getDoAsUser(), db);
+    } else{
+      return d.descDatabase(getDoAsUser(), db);
+    }
   }
 
   /**
