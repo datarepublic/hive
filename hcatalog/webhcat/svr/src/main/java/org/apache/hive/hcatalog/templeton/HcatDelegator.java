@@ -59,6 +59,7 @@ public class HcatDelegator extends LauncherDelegator {
 
   private boolean jdbcMode;
   private static String hivePrincipal;
+  private static final int MAX_RESULT_LINES = 4096;
 
   public HcatDelegator(AppConfig appConf, ExecService execService) throws IOException {
     super(appConf);
@@ -1104,7 +1105,17 @@ public class HcatDelegator extends LauncherDelegator {
         return "";
       }
 
-      String json = res.getString(1);
+      StringBuilder sb = new StringBuilder();
+      int resultCount = 0;
+      do {
+        if(resultCount > MAX_RESULT_LINES){
+          throw new IOException("Too many results to return. Use MapReduce Instead.");
+        }
+        sb.append(res.getString(1));
+        resultCount++;
+      } while(res.next());
+      final String json = sb.toString();
+
       LOG.debug("JSON result from JDBC: {}", json);
       return json;
     } finally{
