@@ -186,7 +186,17 @@
   </properties>
 
   <repositories>
-   <!-- This needs to be removed before checking in-->
+    <!-- This needs to be removed before checking in-->
+    <repository>
+      <id>hortonworks</id>
+      <name>hortonworks</name>
+      <url>http://repo.hortonworks.com/content/repositories/releases/</url>
+    </repository>
+    <repository>
+      <id>pentaho-repo</id>
+      <name>pentaho-repo</name>
+      <url>https://public.nexus.pentaho.org/content/groups/omni/</url>
+    </repository>
     <repository>
       <id>datanucleus</id>
       <name>datanucleus maven repository</name>
@@ -219,16 +229,16 @@
       <snapshots>
         <enabled>false</enabled>
       </snapshots>
-     </repository>
-     <repository>
-       <id>sonatype-snapshot</id>
-       <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-       <releases>
-         <enabled>false</enabled>
-       </releases>
-       <snapshots>
-         <enabled>false</enabled>
-       </snapshots>
+    </repository>
+    <repository>
+      <id>sonatype-snapshot</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
     </repository>
   </repositories>
 
@@ -921,46 +931,46 @@
         </configuration>
       </plugin>
       <plugin>
-	<groupId>org.apache.rat</groupId>
-	<artifactId>apache-rat-plugin</artifactId>
-	<version>0.10</version>
-	<configuration>
-	  <excludes>
-	    <exclude>data/**</exclude>
-	    <exclude>conf/**</exclude>
-	    <exclude>checkstyle/**</exclude>
-	    <exclude>bin/**</exclude>
-	    <exclude>itests/**</exclude>
-	    <exclude>docs/**</exclude>
+        <groupId>org.apache.rat</groupId>
+        <artifactId>apache-rat-plugin</artifactId>
+        <version>0.10</version>
+        <configuration>
+          <excludes>
+            <exclude>data/**</exclude>
+            <exclude>conf/**</exclude>
+            <exclude>checkstyle/**</exclude>
+            <exclude>bin/**</exclude>
+            <exclude>itests/**</exclude>
+            <exclude>docs/**</exclude>
             <exclude>**/README.md</exclude>
             <exclude>**/*.iml</exclude>
-	    <exclude>**/*.txt</exclude>
-	    <exclude>**/*.log</exclude>
-	    <exclude>**/*.arcconfig</exclude>
-	    <exclude>**/package-info.java</exclude>
-	    <exclude>**/*.properties</exclude>
-	    <exclude>**/*.q</exclude>
-	    <exclude>**/*.q.out</exclude>
-	    <exclude>**/*.xml</exclude>
-	    <exclude>**/gen/**</exclude>
-	    <exclude>**/scripts/**</exclude>
-	    <exclude>**/resources/**</exclude>
-	    <exclude>**/*.rc</exclude>
-	    <exclude>**/*.rcfile</exclude>
-	    <exclude>**/*.qv</exclude>
-	    <exclude>**/*.out</exclude>
-	    <exclude>**/RecordTestObj.java</exclude>
-	    <exclude>**/*.m</exclude>
-	    <exclude>**/gen-java/**</exclude>
-	    <exclude>**/testdata/**</exclude>
-	    <exclude>**/ptest2/*.md</exclude>
-	    <exclude>**/test/org/apache/hadoop/hive/hbase/avro/**</exclude>
-	    <exclude>**/avro_test.avpr</exclude>
-	    <exclude>**/xmlReport.pl</exclude>
-	    <exclude>**/*.html</exclude>
-	    <exclude>**/sit</exclude>
-	  </excludes>
-	</configuration>
+            <exclude>**/*.txt</exclude>
+            <exclude>**/*.log</exclude>
+            <exclude>**/*.arcconfig</exclude>
+            <exclude>**/package-info.java</exclude>
+            <exclude>**/*.properties</exclude>
+            <exclude>**/*.q</exclude>
+            <exclude>**/*.q.out</exclude>
+            <exclude>**/*.xml</exclude>
+            <exclude>**/gen/**</exclude>
+            <exclude>**/scripts/**</exclude>
+            <exclude>**/resources/**</exclude>
+            <exclude>**/*.rc</exclude>
+            <exclude>**/*.rcfile</exclude>
+            <exclude>**/*.qv</exclude>
+            <exclude>**/*.out</exclude>
+            <exclude>**/RecordTestObj.java</exclude>
+            <exclude>**/*.m</exclude>
+            <exclude>**/gen-java/**</exclude>
+            <exclude>**/testdata/**</exclude>
+            <exclude>**/ptest2/*.md</exclude>
+            <exclude>**/test/org/apache/hadoop/hive/hbase/avro/**</exclude>
+            <exclude>**/avro_test.avpr</exclude>
+            <exclude>**/xmlReport.pl</exclude>
+            <exclude>**/*.html</exclude>
+            <exclude>**/sit</exclude>
+          </excludes>
+        </configuration>
       </plugin>
     </plugins>
   </build>
@@ -968,7 +978,7 @@
   <profiles>
     <profile>
       <activation>
-         <activeByDefault>false</activeByDefault>
+        <activeByDefault>false</activeByDefault>
       </activation>
       <id>itests</id>
       <modules>
@@ -1219,7 +1229,7 @@
       <activation>
         <os>
           <family>Windows</family>
-       </os>
+        </os>
       </activation>
       <build>
         <plugins>
@@ -1258,54 +1268,54 @@
       </properties>
     </profile>
     <profile>
-        <id>windows</id>
-	    <modules>
-	      <module>winpkg</module>
-        </modules>
-        <build>
-            <plugins>
-                <plugin>
-                    <groupId>com.google.code.maven-replacer-plugin</groupId>
-                    <artifactId>replacer</artifactId>
-                    <version>1.5.2</version>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>replace</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                    <configuration>
-                        <includes>
-                            <include>winpkg/src/scripts/*</include>
-                        </includes>
-                    <replacements>
-                        <replacement>
-                            <token>@final.name@</token>
-                            <value>hive-${project.version}</value>
-                       </replacement>
-                       <replacement>
-                            <token>@version@</token>
-                            <value>${project.version}</value>
-                       </replacement>
-                       <replacement>
-                            <token>@hadoop.version@</token>
-                            <value>${hadoop-23.version}</value>
-                       </replacement>
-                       <replacement>
-                            <token>@zookeeper.version@</token>
-                            <value>${zookeeper.version}</value>
-                       </replacement>
-                       <replacement>
-                            <token>@hive.version@</token>
-                            <value>${project.version}</value>
-                       </replacement>
-                    </replacements>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </build>
-	</profile>
+      <id>windows</id>
+      <modules>
+        <module>winpkg</module>
+      </modules>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>com.google.code.maven-replacer-plugin</groupId>
+            <artifactId>replacer</artifactId>
+            <version>1.5.2</version>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>replace</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <includes>
+                <include>winpkg/src/scripts/*</include>
+              </includes>
+              <replacements>
+                <replacement>
+                  <token>@final.name@</token>
+                  <value>hive-${project.version}</value>
+                </replacement>
+                <replacement>
+                  <token>@version@</token>
+                  <value>${project.version}</value>
+                </replacement>
+                <replacement>
+                  <token>@hadoop.version@</token>
+                  <value>${hadoop-23.version}</value>
+                </replacement>
+                <replacement>
+                  <token>@zookeeper.version@</token>
+                  <value>${zookeeper.version}</value>
+                </replacement>
+                <replacement>
+                  <token>@hive.version@</token>
+                  <value>${project.version}</value>
+                </replacement>
+              </replacements>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>skip-spark-test</id>
       <activation>
