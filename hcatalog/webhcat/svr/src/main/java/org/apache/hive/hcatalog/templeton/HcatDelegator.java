@@ -34,18 +34,16 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.ws.rs.core.Response;
-
 import org.apache.commons.exec.ExecuteException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.net.NetUtils;
-import org.apache.hadoop.security.SecurityUtil;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.ErrorMsg;
+import org.apache.hadoop.security.SecurityUtil;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hive.hcatalog.templeton.tool.TempletonUtils;
 import org.eclipse.jetty.http.HttpStatus;
 
@@ -1003,7 +1001,7 @@ public class HcatDelegator extends LauncherDelegator {
   private Connection getConnection(final String user) throws IOException, InterruptedException, SQLException {
     final String impersonate = hiveUgi == null ? "" : /*";principal=" + hivePrincipal +*/ ";hive.server2.proxy.user=" + user;
     final String url = appConf.hiveJdbcUrl() + impersonate + "?hive.ddl.output.format=json;";
-    LOG.info(String.format("opening JDBC connection to Hive on: {}", url));
+    LOG.info(String.format("opening JDBC connection to Hive on: %s", url));
 
     if(hiveUgi == null)
       return DriverManager.getConnection(url);
